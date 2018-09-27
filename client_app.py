@@ -1,4 +1,4 @@
-import boto3
+import backend
 
 def main():
     choice = "0"
@@ -25,6 +25,9 @@ def main():
 
 def send_messages():
     print("This is the echo message app.")
+    back = backend.backend()
+    print(back.s3_client)
+    print(back.sqs_client)
     # try to start scs queue
     # confirm correct startup
     # notify and wait for user input
@@ -48,7 +51,7 @@ def init_scs_queue():
 
     # Create the queue. This returns an SQS.Queue instance
     queue = sqs.create_queue(QueueName='test', Attributes={'DelaySeconds': '5'})
-    response = client.create_queue(
+    response = queue.create_queue(
         QueueName='string',
         Attributes={
             'string': 'string'
