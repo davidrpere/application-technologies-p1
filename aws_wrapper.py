@@ -1,6 +1,8 @@
 import time
 import boto3
 import utils
+from threading import Thread
+import random
 
 
 class AwsWrapper(object):
@@ -51,12 +53,107 @@ class S3Manager(AwsWrapper):
             self._buckets = []
 
 
+class SqsMessagingInterface(Thread):
+    _outbox_ready = False
+    _inbox_ready = False
+
+    def __init__(self, role):
+        print('Hello, Messaging interface')
+        Thread.__init__(self)
+        self._identity = random.getrandbits(32)
+        self._sqs_manager = SqsManager()
+        self._role = role
+
+    def run(self):
+        if not self._check_sqs_queues('Inbox'):
+            self._sqs_manager.create_queue('Inbox')
+        if not self._check_sqs_queues('Outbox'):
+            self._sqs_manager.create_queue('Outbox')
+        self._wait_for_queue_confirmation('Inbox')
+        self._inbox_ready = True
+        self._wait_for_queue_confirmation('Outbox')
+        self._outbox_ready = True
+
+    def send_message(self, message, addressee=None):
+        print('Send message method')
+        if self._role == 'EchoSystem':
+            self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Outbox'), self._identity, message,
+                                            addressee)
+        elif self._role == 'Client':
+            self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, message,
+                                            'EchoSystem')
+
+    def receive_message(self):
+        print('Receive message method')
+        if self._role == 'EchoSystem':
+            # Commented for testing purposes.
+            # self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Inbox'))
+            self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Outbox'), self._identity)
+        elif self._role == 'Client':
+            # Commented for testing purposes.
+            self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Outbox'), self._identity)
+
+    def _test_thread_death(self):
+        print('I\'m not dead!!. My inbox is', self._inbox_ready)
+
+    def _wait_for_queue_confirmation(self, queue_name):
+        while True:
+            for queue in self._sqs_manager.queues:
+                if queue_name in queue:
+                    return True
+            time.sleep(2)
+
+    def _check_sqs_queues(self, queue_name):
+        for queue in self._sqs_manager.queues:
+            if queue_name in queue:
+                return True
+        return False
+
+
 class SqsManager(AwsWrapper):
     def __init__(self):
-        print('Hello, sqs manager')
+        # print('Hello, sqs manager')
         # utils.check_global_variables()
         AwsWrapper.__init__(self, 'sqs')
         self.queues = self._client.list_queues()
+
+    def _send_message(self, queue, author, message_body, addressee=None):
+        response = self._client.send_message(
+            QueueUrl=queue,
+            DelaySeconds=10,
+            MessageAttributes={
+                'Author': {
+                    'DataType': 'String',
+                    'StringValue': str(author)
+                },
+                'Addressee': {
+                    'DataType': 'String',
+                    'StringValue': str(addressee)
+                }
+            },
+            MessageBody=(
+                message_body
+            )
+        )
+        print(response['MessageId'])
+
+    def _receive_message(self, queue, addressee=None):
+        response = self._client.receive_message(
+            QueueUrl=queue,
+            MaxNumberOfMessages=1,
+            MessageAttributeNames=[
+                'All'
+            ],
+            VisibilityTimeout=0,
+            WaitTimeSeconds=0
+        )
+        message = response['Messages'][0]
+        for message in response['Messages']:
+            # if addressee in message['MessageAttributes']['Addressee']:
+            message_addressee = message['MessageAttributes']['Addressee']['StringValue']
+            message_author = message['MessageAttributes']['Author']['StringValue']
+            message_body = message['Body']
+            print(message_body)
 
     def create_queue(self, queue_name, queue_attributes=None):
         if not queue_attributes:
@@ -78,6 +175,13 @@ class SqsManager(AwsWrapper):
                 QueueUrl=queue_url
             )
             return True
+        else:
+            return False
+
+    def get_queue_url(self, substring):
+        for queue in self.queues:
+            if substring in queue:
+                return queue
         else:
             return False
 
