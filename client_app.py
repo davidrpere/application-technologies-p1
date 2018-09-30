@@ -1,65 +1,48 @@
-import backend
+import utils
+import time
 
 def main():
-    choice = "0"
-    while choice == "0":
-        print("Main menu of the client app. You have two choices:")
-        print("Choose 1 for sending EchoApp messages.")
-        print("Choose 2 for retrieving EchoApp messages.")
-        print("Choose q for closing the client.")
+    choice = '0'
+    while choice != 'q':
+        print('Main menu of the client app. You have two choices:')
+        print('Choose 1 for sending EchoApp messages.')
+        print('Choose 2 for retrieving EchoApp messages.')
+        print('Choose q for closing the client.')
 
-        choice = input("Please make a choice: ")
+        choice = input('Please make a choice: ')
 
-        if choice == "q":
-            # cleanup
-            print("Closing...")
+        if choice == 'q':
+            # TODO cleanup
+            print('Closing...')
             exit()
-        elif choice == "1":
-            print("Chosen option: Sending EchoApp messages.")
+        elif choice == '1':
+            print('Chosen option: Sending EchoApp messages.')
             send_messages()
-        elif choice == "2":
-            print("Chosen option: Retrieve messages.")
+        elif choice == '2':
+            print('Chosen option: Retrieve messages.')
             retrieve_messages()
         else:
-            print("Please, choose a valid option.")
+            print('Please, choose a valid option.')
+
 
 def send_messages():
-    print("This is the echo message app.")
-    back = backend.backend()
-    print(back.s3_client)
-    print(back.sqs_client)
-    # try to start scs queue
-    # confirm correct startup
-    # notify and wait for user input
-    # send user input.
-    # if user input is END, go back to main menu.
+    print('This is the echo message app.')
+    messaging_interface = utils.SqsMessagingInterface('Client')
+    messaging_interface.daemon = True
+    messaging_interface.start()
+    while not messaging_interface._inbox_ready or not messaging_interface._outbox_ready:
+        time.sleep(1)
+
+    while True:
+        # time.sleep(0.1)
+        input_msg = input('>> ')
+        messaging_interface.send_message(input_msg, 'EchoSystem')
+        if input_msg == 'END':
+            print('\n')
+            break
 
 def retrieve_messages():
-    print("This is the message retrieval app.")
-    # try to start scs queue (?)
-    # confirm correct startup
-    # notify and wait for user input
-    # send user input.
-    # wait for reply.
-    # show information.
-    # ask if you want to continue or not.
-    # if user input is END, go back to main menu.
+    print('This is the message retrieval app.')
 
-def init_scs_queue():
-    # Get the service resource
-    sqs = boto3.resource('sqs')
-
-    # Create the queue. This returns an SQS.Queue instance
-    queue = sqs.create_queue(QueueName='test', Attributes={'DelaySeconds': '5'})
-    response = queue.create_queue(
-        QueueName='string',
-        Attributes={
-            'string': 'string'
-        }
-    )
-
-    # You can now access identifiers and attributes
-    print(queue.url)
-    print(queue.attributes.get('DelaySeconds'))
 
 main()

@@ -1,8 +1,6 @@
 import time
 import boto3
 import utils
-from threading import Thread
-import random
 
 
 class AwsWrapper(object):
@@ -24,8 +22,24 @@ class S3Manager(AwsWrapper):
         AwsWrapper.__init__(self, 's3')
         self.buckets = self._client.list_buckets()
 
+    def upload_file(self, filename):
+        print('Asked to upload a file.')
+
+    def download_file(self, filename):
+        print('Asked to download a file.')
+
+
     def create_bucket(self, bucket_name):
-        self._client.create_bucket(Bucket=bucket_name)
+        # parameters = utils.BucketAttributes(None, 'ta-assignment-p1').get_dictionary()
+        self._client.create_bucket(
+            ACL='public-read-write',
+            Bucket=bucket_name,
+            CreateBucketConfiguration={
+                'LocationConstraint': 'eu-west-3'
+            }
+        )
+        # self._client.create_bucket(parameters)
+        # self._client.create_bucket(Bucket=bucket_name)
 
     def remove_bucket(self, bucket_name):
         if bucket_name in self._buckets:
@@ -53,89 +67,21 @@ class S3Manager(AwsWrapper):
             self._buckets = []
 
 
-class SqsMessagingInterface(Thread):
-    _outbox_ready = False
-    _inbox_ready = False
-
-    def __init__(self, role):
-        print('Hello, Messaging interface')
-        Thread.__init__(self)
-        self._identity = random.getrandbits(32)
-        self._sqs_manager = SqsManager()
-        self._role = role
-
-    def run(self):
-        if not self._check_sqs_queues('Inbox'):
-            self._sqs_manager.create_queue('Inbox')
-        if not self._check_sqs_queues('Outbox'):
-            self._sqs_manager.create_queue('Outbox')
-        self._wait_for_queue_confirmation('Inbox')
-        self._inbox_ready = True
-        self._wait_for_queue_confirmation('Outbox')
-        self._outbox_ready = True
-
-    def send_message(self, message, addressee=None):
-        print('Send message method')
-        if self._role == 'EchoSystem':
-            self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Outbox'), self._identity, message,
-                                            addressee)
-        elif self._role == 'Client':
-            self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, message,
-                                            'EchoSystem')
-
-    def receive_message(self):
-        print('Receive message method')
-        if self._role == 'EchoSystem':
-            # Commented for testing purposes.
-            # self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Inbox'))
-            self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Outbox'), self._identity)
-        elif self._role == 'Client':
-            # Commented for testing purposes.
-            self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Outbox'), self._identity)
-
-    def _test_thread_death(self):
-        print('I\'m not dead!!. My inbox is', self._inbox_ready)
-
-    def _wait_for_queue_confirmation(self, queue_name):
-        while True:
-            for queue in self._sqs_manager.queues:
-                if queue_name in queue:
-                    return True
-            time.sleep(2)
-
-    def _check_sqs_queues(self, queue_name):
-        for queue in self._sqs_manager.queues:
-            if queue_name in queue:
-                return True
-        return False
-
-
 class SqsManager(AwsWrapper):
     def __init__(self):
-        # print('Hello, sqs manager')
-        # utils.check_global_variables()
         AwsWrapper.__init__(self, 'sqs')
         self.queues = self._client.list_queues()
 
     def _send_message(self, queue, author, message_body, addressee=None):
+        attributes = utils.MessageAttributes(author, addressee)._message_attributes
         response = self._client.send_message(
             QueueUrl=queue,
-            DelaySeconds=10,
-            MessageAttributes={
-                'Author': {
-                    'DataType': 'String',
-                    'StringValue': str(author)
-                },
-                'Addressee': {
-                    'DataType': 'String',
-                    'StringValue': str(addressee)
-                }
-            },
+            DelaySeconds=0,
+            MessageAttributes=attributes,
             MessageBody=(
                 message_body
             )
         )
-        print(response['MessageId'])
 
     def _receive_message(self, queue, addressee=None):
         response = self._client.receive_message(
@@ -147,22 +93,38 @@ class SqsManager(AwsWrapper):
             VisibilityTimeout=0,
             WaitTimeSeconds=0
         )
-        message = response['Messages'][0]
-        for message in response['Messages']:
-            # if addressee in message['MessageAttributes']['Addressee']:
-            message_addressee = message['MessageAttributes']['Addressee']['StringValue']
-            message_author = message['MessageAttributes']['Author']['StringValue']
-            message_body = message['Body']
-            print(message_body)
+        messages = []
+        try:
+            for message in response['Messages']:
+                message_addressee = message['MessageAttributes']['Addressee']['StringValue']
+                message_author = message['MessageAttributes']['Author']['StringValue']
+                message_body = message['Body']
+                if str(addressee) in message_addressee:
+                    compound = {'Author': message_author, 'Addressee': message_addressee, 'Body': message_body}
+                    messages.append(compound)
+                    self._client.delete_message(
+                        QueueUrl=queue,
+                        ReceiptHandle=message['ReceiptHandle']
+                    )
+        except KeyError:
+            time.sleep(0.1)
+        return messages
 
     def create_queue(self, queue_name, queue_attributes=None):
         if not queue_attributes:
-            dictionary_attributes = QueueAttributes().get_dictionary()
+            dictionary_attributes = utils.QueueAttributes().get_dictionary()
             request_params = {
                 'QueueName': queue_name,
                 'Attributes': dictionary_attributes
             }
-            queue = self._client.create_queue(**request_params)
+            queue_created = False
+            while not queue_created:
+                try:
+                    queue = self._client.create_queue(**request_params)
+                    queue_created = True
+                except self._client.exceptions.QueueDeletedRecently:
+                    print('Can\'t create queue yet. AWS won\'t let create it.')
+                    time.sleep(10)
             print('Created queue: ', queue)
         else:
             dictionary_attributes = queue_attributes.get_dictionary()
@@ -199,35 +161,6 @@ class SqsManager(AwsWrapper):
             self._queues = value['QueueUrls']
         except KeyError:
             self._queues = []
-
-
-class QueueAttributes(object):
-    _delay_seconds = '0'
-    _message_retention_period = '345600'
-    _maximum_message_size = '262144'
-    _receive_message_wait_time_seconds = '0'
-    _visibility_timeout = '12'
-
-    def __init__(self, delay_seconds=None, message_retention_period=None, maximum_message_size=None,
-                 receive_message_wait_time_seconds=None, visibility_timeout=None):
-        if delay_seconds is not None:
-            self._delay_seconds = delay_seconds
-        if message_retention_period is not None:
-            self._message_retention_period = message_retention_period
-        if maximum_message_size is not None:
-            self._maximum_message_size = maximum_message_size
-        if receive_message_wait_time_seconds is not None:
-            self._receive_message_wait_time_seconds = receive_message_wait_time_seconds
-        if visibility_timeout is not None:
-            self._visibility_timeout = visibility_timeout
-
-    def get_dictionary(self):
-        default_params = {'DelaySeconds': self._delay_seconds,
-                          'MaximumMessageSize': self._maximum_message_size,
-                          'MessageRetentionPeriod': self._message_retention_period,
-                          'ReceiveMessageWaitTimeSeconds': self._receive_message_wait_time_seconds,
-                          'VisibilityTimeout': self._visibility_timeout}
-        return default_params
 
 
 def test_sqs():
