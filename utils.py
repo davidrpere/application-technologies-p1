@@ -40,6 +40,7 @@ class S3StoringInterface(Thread):
 class SqsMessagingInterface(Thread):
     _outbox_ready = False
     _inbox_ready = False
+    _conversations = []
 
     def __init__(self, role):
         print('Hello, Messaging interface')
@@ -65,9 +66,15 @@ class SqsMessagingInterface(Thread):
                 for received_message in received_messages:
                     if self._role == 'EchoSystem':
                         print('Echoing : ', received_message['Body'])
+                        self._process_message_content(received_message)
                         self.send_message(received_message['Body'], received_message['Author'])
                     elif self._role == 'Client':
                         print('\nEcho says... >>', received_message['Body'])
+
+
+    def _process_message_content(self, received_message):
+        if received_message['Command'] == 'NEW_USER':
+            self._conversations.append()
 
     def send_message(self, message, addressee=None):
         if self._role == 'EchoSystem':
