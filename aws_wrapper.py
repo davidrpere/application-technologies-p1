@@ -1,6 +1,7 @@
 import time
 import boto3
 import utils
+import os
 
 
 class AwsWrapper(object):
@@ -22,15 +23,24 @@ class S3Manager(AwsWrapper):
         AwsWrapper.__init__(self, 's3')
         self.buckets = self._client.list_buckets()
 
-    def upload_file(self, filename):
+    def upload_file(self, filename, bucket='ta-assignment-1'):
         print('Asked to upload a file.')
+        file_name_r = os.path.basename(filename)
+        self._resource.meta.client.upload_file(filename, bucket, file_name_r)
 
-    def download_file(self, filename):
+    def download_file(self, filename, local_path, bucket='ta-assignment-1'):
         print('Asked to download a file.')
+        self._resource.Bucket(bucket).download_file(filename, local_path)
 
+    def remove_file(self, filename, bucket='ta-assignment-1'):
+        print('Asked to remove a file.')
+        response = self._client.delete_object(
+            Bucket=bucket,
+            Key=filename,
+        )
+        print(response)
 
     def create_bucket(self, bucket_name):
-        # parameters = utils.BucketAttributes(None, 'ta-assignment-p1').get_dictionary()
         self._client.create_bucket(
             ACL='public-read-write',
             Bucket=bucket_name,
@@ -38,8 +48,6 @@ class S3Manager(AwsWrapper):
                 'LocationConstraint': 'eu-west-3'
             }
         )
-        # self._client.create_bucket(parameters)
-        # self._client.create_bucket(Bucket=bucket_name)
 
     def remove_bucket(self, bucket_name):
         if bucket_name in self._buckets:
@@ -53,6 +61,21 @@ class S3Manager(AwsWrapper):
 
     def buckets_to_array(self):
         return [bucket for bucket in (self.buckets or [])]
+
+    @property
+    def files(self):
+        self.files = self._client.list_objects(
+            Bucket='ta-assignment-1'
+        )
+        # self.files = response['Contents']
+        return self._files
+
+    @files.setter
+    def files(self, value):
+        try:
+            self._files = [entry['Key'] for entry in value['Contents']]
+        except KeyError:
+            self._files = []
 
     @property
     def buckets(self):
@@ -72,14 +95,17 @@ class SqsManager(AwsWrapper):
         AwsWrapper.__init__(self, 'sqs')
         self.queues = self._client.list_queues()
 
-    def _send_message(self, queue, author, message_body, addressee=None):
-        attributes = utils.MessageAttributes(author, addressee)._message_attributes
+    def _send_message(self, queue, author, message_body, addressee=None, cmd=None):
+        # if cmd is not None:
+        #     attributes = utils.MessageAttributes(author, addressee, cmd)
+        # else:
+        attributes = utils.MessageAttributes(author, addressee, cmd)._message_attributes
         response = self._client.send_message(
             QueueUrl=queue,
             DelaySeconds=0,
             MessageAttributes=attributes,
             MessageBody=(
-                message_body
+                str(message_body)
             )
         )
 
@@ -91,17 +117,18 @@ class SqsManager(AwsWrapper):
                 'All'
             ],
             VisibilityTimeout=0,
-            WaitTimeSeconds=0
+            WaitTimeSeconds=10
         )
         messages = []
         try:
             for message in response['Messages']:
                 message_addressee = message['MessageAttributes']['Addressee']['StringValue']
-                message_author = message['MessageAttributes']['Author']['StringValue']
-                message_body = message['Body']
+                # message_author = message['MessageAttributes']['Author']['StringValue']
+                # message_body = message['Body']
                 if str(addressee) in message_addressee:
-                    compound = {'Author': message_author, 'Addressee': message_addressee, 'Body': message_body}
-                    messages.append(compound)
+                    # compound = {'Author': message_author, 'Addressee': message_addressee, 'Body': message_body}
+                    # messages.append(compound)
+                    messages.append(message)
                     self._client.delete_message(
                         QueueUrl=queue,
                         ReceiptHandle=message['ReceiptHandle']

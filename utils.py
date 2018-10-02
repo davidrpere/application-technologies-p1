@@ -1,8 +1,10 @@
 import time
+from typing import Dict, Any
+
 import aws_wrapper
 import random
 from threading import Thread
-
+import os
 
 class S3StoringInterface(Thread):
     _storage_ready = False
@@ -30,6 +32,12 @@ class S3StoringInterface(Thread):
                     return True
             time.sleep(1)
 
+    def _check_file_exists(self, file_name):
+        for file in self._s3_manager.files:
+            if file_name == file:
+                return True
+        return False
+
     def _check_s3_bucket(self, bucket_name):
         for bucket in self._s3_manager.buckets:
             if bucket_name in bucket:
@@ -40,7 +48,7 @@ class S3StoringInterface(Thread):
 class SqsMessagingInterface(Thread):
     _outbox_ready = False
     _inbox_ready = False
-    _conversations = []
+    _clients: Dict[int, str] = {}
 
     def __init__(self, role):
         print('Hello, Messaging interface')
@@ -60,6 +68,10 @@ class SqsMessagingInterface(Thread):
         self._wait_for_queue_confirmation('Outbox')
         self._outbox_ready = True
 
+        if self._role == 'Client':
+            self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, self._identity,
+                                            'EchoSystem', 'new-client')
+
         while True:
             received_messages = self.receive_message()
             if received_messages:
@@ -67,14 +79,21 @@ class SqsMessagingInterface(Thread):
                     if self._role == 'EchoSystem':
                         print('Echoing : ', received_message['Body'])
                         self._process_message_content(received_message)
-                        self.send_message(received_message['Body'], received_message['Author'])
                     elif self._role == 'Client':
                         print('\nEcho says... >>', received_message['Body'])
 
-
     def _process_message_content(self, received_message):
-        if received_message['Command'] == 'NEW_USER':
-            self._conversations.append()
+        # TODO fix
+        print(received_message)
+        print(received_message['MessageAttributes']['Command'])
+        attributes = received_message['MessageAttributes']
+        if received_message['MessageAttributes']['Command']['StringValue'] == 'new-client':
+            print('Detected new client.')
+            self._clients[attributes['Author']['StringValue']] = attributes['Author']['StringValue'] + '.yaml'
+            # TODO guardamos este pequeño DICT en disco en S3.
+
+        else:
+            self.send_message(received_message['Body'], received_message['MessageAttributes']['Author'])
 
     def send_message(self, message, addressee=None):
         if self._role == 'EchoSystem':
@@ -106,7 +125,7 @@ class SqsMessagingInterface(Thread):
 
 class MessageAttributes(object):
     # TODO left on purpose. Might want to overload more parameters in the future.
-    def __init__(self, author, addressee):
+    def __init__(self, author, addressee, cmd=None):
         self._message_attributes = {
             'Author': {
                 'DataType': 'String',
@@ -115,6 +134,10 @@ class MessageAttributes(object):
             'Addressee': {
                 'DataType': 'String',
                 'StringValue': str(addressee)
+            },
+            'Command': {
+                'DataType': 'String',
+                'StringValue': str(cmd)
             }
         }
 
@@ -191,3 +214,25 @@ class QueueAttributes(object):
                           'ReceiveMessageWaitTimeSeconds': self._receive_message_wait_time_seconds,
                           'VisibilityTimeout': self._visibility_timeout}
         return default_params
+
+
+def main():
+    print('Performing unit test for utils.py')
+    s3_storing_interface = S3StoringInterface()
+    # response = s3_storing_interface._check_file_exists('test-file')
+    # print(response)
+    # for keys in response['Contents']:
+    #     print(keys)
+    #     print('---')
+
+    if s3_storing_interface._check_file_exists('gracias_jeff.txt') is True:
+        s3_storing_interface._s3_manager.remove_file('gracias_jeff.txt')
+    else:
+        s3_storing_interface._s3_manager.upload_file('/home/drodriguez/Desktop/gracias_jeff.txt')
+    print(s3_storing_interface._check_file_exists('gracias_tim.txt'))
+    s3_storing_interface._s3_manager.download_file('gracias_tim.txt', '/home/drodriguez/Desktop/gracias_jonny.txt')
+    print(s3_storing_interface._check_file_exists('gracias_marques.txt'))
+
+
+if __name__ == '__main__':
+    main()
