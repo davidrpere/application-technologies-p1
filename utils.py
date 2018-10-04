@@ -25,6 +25,23 @@ class S3StoringInterface(Thread):
         while True:
             time.sleep(5)
 
+    def upload_file(self, filename, bucket='ta-assignment-1'):
+        print('Asked to upload a file.')
+        file_name_r = os.path.basename(filename)
+        self._s3_manager._resource.meta.client.upload_file(filename, bucket, file_name_r)
+
+    def download_file(self, filename, local_path, bucket='ta-assignment-1'):
+        print('Asked to download a file.')
+        self._s3_manager._resource.Bucket(bucket).download_file(filename, local_path)
+
+    def remove_file(self, filename, bucket='ta-assignment-1'):
+        print('Asked to remove a file.')
+        response = self._s3_manager._client.delete_object(
+            Bucket=bucket,
+            Key=filename,
+        )
+        print(response)
+
     def _wait_for_bucket_confirmation(self, bucket_name):
         while True:
             for bucket in self._s3_manager.buckets:
@@ -49,6 +66,7 @@ class SqsMessagingInterface(Thread):
     _outbox_ready = False
     _inbox_ready = False
     _clients: Dict[int, str] = {}
+    _messages: Dict = {}
 
     def __init__(self, role):
         print('Hello, Messaging interface')
@@ -69,18 +87,26 @@ class SqsMessagingInterface(Thread):
         self._outbox_ready = True
 
         if self._role == 'Client':
-            self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, self._identity,
-                                            'EchoSystem', 'new-client')
+            self._begin_connection()
 
         while True:
             received_messages = self.receive_message()
             if received_messages:
                 for received_message in received_messages:
                     if self._role == 'EchoSystem':
-                        print('Echoing : ', received_message['Body'])
                         self._process_message_content(received_message)
                     elif self._role == 'Client':
                         print('\nEcho says... >>', received_message['Body'])
+
+    def _begin_connection(self):
+        print('Starting connection from messaging interface...')
+        self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, self._identity,
+                                        'EchoSystem', 'new-client')
+
+    def end_connection(self):
+        print('Ending connection from messaging interface...')
+        self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, self._identity,
+                                        'EchoSystem', 'client-left')
 
     def _process_message_content(self, received_message):
         # TODO fix
@@ -91,16 +117,34 @@ class SqsMessagingInterface(Thread):
             print('Detected new client.')
             self._clients[attributes['Author']['StringValue']] = attributes['Author']['StringValue'] + '.yaml'
             # TODO guardamos este pequeño DICT en disco en S3.
-
+        elif received_message[
+            'MessageAttributes']['Command']['StringValue'] == 'client-end':
+            # TODO save chat to S3
+            print('Client left the chat, but not the session.')
+        elif received_message['MessageAttributes']['Command']['StringValue'] == 'client-left':
+            # TODO delete file from S3
+            print('Client closed the connection.')
         else:
+            print('Echoing : ', received_message['Body'])
             self.send_message(received_message['Body'], received_message['MessageAttributes']['Author'])
+        author = attributes['Author']['StringValue']
+        if author in self._messages:
+            self._messages[author].append(received_message['Body'])
+        else:
+            conversation = []
+            conversation.append(received_message['Body'])
+            self._messages[author] = conversation
 
     def send_message(self, message, addressee=None):
         if self._role == 'EchoSystem':
             self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Outbox'), self._identity, message,
                                             addressee)
         elif self._role == 'Client':
-            self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, message,
+            if message == 'END':
+                self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, message,
+                                                'EchoSystem', 'client-end')
+            else:
+                self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, message,
                                             'EchoSystem')
 
     def receive_message(self):

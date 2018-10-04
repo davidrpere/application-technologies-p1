@@ -1,5 +1,6 @@
 import time
 import utils
+from copy import copy
 
 
 def main():
@@ -19,8 +20,17 @@ def main():
             or not storing_interface._storage_ready:
         time.sleep(1)
 
+    clients = messaging_interface._clients.copy()
+
     while True:
         time.sleep(0.3)
+        if messaging_interface._clients != clients:
+            clients = messaging_interface._clients.copy()
+            for client_id, client_filename in clients.items():
+                if not storing_interface._check_file_exists(client_filename):
+                    open('/tmp/' + client_filename, 'a').close()
+                    storing_interface.upload_file('/tmp/' + client_filename)
+
 
 
 main()

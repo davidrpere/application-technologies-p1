@@ -23,22 +23,6 @@ class S3Manager(AwsWrapper):
         AwsWrapper.__init__(self, 's3')
         self.buckets = self._client.list_buckets()
 
-    def upload_file(self, filename, bucket='ta-assignment-1'):
-        print('Asked to upload a file.')
-        file_name_r = os.path.basename(filename)
-        self._resource.meta.client.upload_file(filename, bucket, file_name_r)
-
-    def download_file(self, filename, local_path, bucket='ta-assignment-1'):
-        print('Asked to download a file.')
-        self._resource.Bucket(bucket).download_file(filename, local_path)
-
-    def remove_file(self, filename, bucket='ta-assignment-1'):
-        print('Asked to remove a file.')
-        response = self._client.delete_object(
-            Bucket=bucket,
-            Key=filename,
-        )
-        print(response)
 
     def create_bucket(self, bucket_name):
         self._client.create_bucket(

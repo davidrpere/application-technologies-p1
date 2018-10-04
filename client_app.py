@@ -2,6 +2,9 @@ import utils
 import time
 
 def main():
+    messaging_interface = utils.SqsMessagingInterface('Client')
+    messaging_interface.daemon = True
+    messaging_interface.start()
     choice = '0'
     while choice != 'q':
         print('Main menu of the client app. You have two choices:')
@@ -14,10 +17,11 @@ def main():
         if choice == 'q':
             # TODO cleanup
             print('Closing...')
+            messaging_interface.end_connection()
             exit()
         elif choice == '1':
             print('Chosen option: Sending EchoApp messages.')
-            send_messages()
+            send_messages(messaging_interface)
         elif choice == '2':
             print('Chosen option: Retrieve messages.')
             retrieve_messages()
@@ -25,11 +29,8 @@ def main():
             print('Please, choose a valid option.')
 
 
-def send_messages():
+def send_messages(messaging_interface):
     print('This is the echo message app.')
-    messaging_interface = utils.SqsMessagingInterface('Client')
-    messaging_interface.daemon = True
-    messaging_interface.start()
     while not messaging_interface._inbox_ready or not messaging_interface._outbox_ready:
         time.sleep(1)
 
