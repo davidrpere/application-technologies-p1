@@ -5,6 +5,8 @@ import aws_wrapper
 import random
 from threading import Thread
 import os
+from enum import Enum
+
 
 class S3StoringInterface(Thread):
     _storage_ready = False
@@ -74,7 +76,9 @@ class SqsMessagingInterface(Thread):
         self._identity = random.getrandbits(32)
         self._sqs_manager = aws_wrapper.SqsManager()
         self._role = role
-
+        if self._role == 'EchoSystem':
+            self._queries = []
+        
     def run(self):
         # TODO Get these parameters from configuration file.
         if not self._check_sqs_queues('Inbox'):
@@ -110,20 +114,24 @@ class SqsMessagingInterface(Thread):
 
     def _process_message_content(self, received_message):
         # TODO fix
-        print(received_message)
-        print(received_message['MessageAttributes']['Command'])
+        # print(received_message)
+        # print(received_message['MessageAttributes']['Command'])
         attributes = received_message['MessageAttributes']
+        client_id = attributes['Author']['StringValue']
+        filename = client_id + '.json'
         if received_message['MessageAttributes']['Command']['StringValue'] == 'new-client':
             print('Detected new client.')
-            self._clients[attributes['Author']['StringValue']] = attributes['Author']['StringValue'] + '.yaml'
-            # TODO guardamos este pequeño DICT en disco en S3.
-        elif received_message[
-            'MessageAttributes']['Command']['StringValue'] == 'client-end':
+            self._clients[client_id] = filename
+            self._queries.append(Query(client_id, filename, QueryFlag.Create_Files))
+        elif received_message['MessageAttributes']['Command']['StringValue'] == 'client-end':
             # TODO save chat to S3
             print('Client left the chat, but not the session.')
+            self._queries.append(Query(client_id, filename, QueryFlag.Update_Files))
+            print(self._messages)
         elif received_message['MessageAttributes']['Command']['StringValue'] == 'client-left':
             # TODO delete file from S3
             print('Client closed the connection.')
+            self._queries.append(Query(client_id, filename, QueryFlag.Remove_Files))
         else:
             print('Echoing : ', received_message['Body'])
             self.send_message(received_message['Body'], received_message['MessageAttributes']['Author'])
@@ -145,7 +153,7 @@ class SqsMessagingInterface(Thread):
                                                 'EchoSystem', 'client-end')
             else:
                 self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, message,
-                                            'EchoSystem')
+                                                'EchoSystem')
 
     def receive_message(self):
         if self._role == 'EchoSystem':
@@ -166,6 +174,20 @@ class SqsMessagingInterface(Thread):
                 return True
         return False
 
+
+class QueryFlag(Enum):
+    Remove_Files = 4
+    Create_Files = 2
+    Update_Files = 1
+
+
+class Query:
+
+    def __init__(self, client, filename, query_type):
+        self.client_id = client
+        self.query_type = QueryFlag(query_type)
+        self.query_param = filename
+        
 
 class MessageAttributes(object):
     # TODO left on purpose. Might want to overload more parameters in the future.

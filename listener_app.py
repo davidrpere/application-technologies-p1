@@ -1,5 +1,7 @@
 import time
 import utils
+import os
+import json
 from copy import copy
 
 
@@ -24,13 +26,28 @@ def main():
 
     while True:
         time.sleep(0.3)
-        if messaging_interface._clients != clients:
-            clients = messaging_interface._clients.copy()
-            for client_id, client_filename in clients.items():
-                if not storing_interface._check_file_exists(client_filename):
-                    open('/tmp/' + client_filename, 'a').close()
-                    storing_interface.upload_file('/tmp/' + client_filename)
-
+        for query in messaging_interface._queries:
+            if query.query_type == utils.QueryFlag.Remove_Files:
+                print('Listener must remove file ', query.query_param)
+                storing_interface.remove_file(query.query_param)
+                try:
+                    os.remove('/tmp/' + query.query_param)
+                except FileNotFoundError:
+                    print('Asked to remove a file which isn\'t on this machine')
+            elif query.query_type == utils.QueryFlag.Update_Files:
+                print('Listener must update file ', query.query_param)
+                print(messaging_interface._messages[query.client_id])
+                local_file = open('/tmp/' + query.query_param, 'a')
+                local_file.write(json.dumps(messaging_interface._messages[query.client_id]))
+                messaging_interface._messages.pop(query.client_id)
+                local_file.close()
+                storing_interface.upload_file('/tmp/' + query.query_param)
+            elif query.query_type == utils.QueryFlag.Create_Files:
+                print('Listener must create file ', query.query_param)
+                if not storing_interface._check_file_exists(query.query_param):
+                    open('/tmp/' + query.query_param, 'a').close()
+                    storing_interface.upload_file('/tmp/' + query.query_param)
+            messaging_interface._queries.remove(query)
 
 
 main()

@@ -100,22 +100,26 @@ class SqsManager(AwsWrapper):
             MessageAttributeNames=[
                 'All'
             ],
-            VisibilityTimeout=0,
+            VisibilityTimeout=10,
             WaitTimeSeconds=10
         )
         messages = []
         try:
             for message in response['Messages']:
+                # print('for message in response...')
+                # print(response)
                 message_addressee = message['MessageAttributes']['Addressee']['StringValue']
-                # message_author = message['MessageAttributes']['Author']['StringValue']
-                # message_body = message['Body']
                 if str(addressee) in message_addressee:
-                    # compound = {'Author': message_author, 'Addressee': message_addressee, 'Body': message_body}
-                    # messages.append(compound)
                     messages.append(message)
                     self._client.delete_message(
                         QueueUrl=queue,
                         ReceiptHandle=message['ReceiptHandle']
+                    )
+                else:
+                    self._client.change_message_visibility(
+                        QueueUrl=queue,
+                        ReceiptHandle=message['ReceiptHandle'],
+                        VisibilityTimeout=0
                     )
         except KeyError:
             time.sleep(0.1)
