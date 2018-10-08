@@ -1,6 +1,5 @@
 import time
 from typing import Dict, Any
-
 import aws_wrapper
 import random
 from threading import Thread
@@ -81,13 +80,13 @@ class SqsMessagingInterface(Thread):
         
     def run(self):
         # TODO Get these parameters from configuration file.
-        if not self._check_sqs_queues('Inbox'):
+        if not self._sqs_manager._check_sqs_queues('Inbox'):
             self._sqs_manager.create_queue('Inbox')
-        if not self._check_sqs_queues('Outbox'):
+        if not self._sqs_manager._check_sqs_queues('Outbox'):
             self._sqs_manager.create_queue('Outbox')
-        self._wait_for_queue_confirmation('Inbox')
+        self._sqs_manager._wait_for_queue_confirmation('Inbox')
         self._inbox_ready = True
-        self._wait_for_queue_confirmation('Outbox')
+        self._sqs_manager._wait_for_queue_confirmation('Outbox')
         self._outbox_ready = True
 
         if self._role == 'Client':
@@ -161,21 +160,9 @@ class SqsMessagingInterface(Thread):
         elif self._role == 'Client':
             return self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Outbox'), self._identity)
 
-    def _wait_for_queue_confirmation(self, queue_name):
-        while True:
-            for queue in self._sqs_manager.queues:
-                if queue_name in queue:
-                    return True
-            time.sleep(1)
-
-    def _check_sqs_queues(self, queue_name):
-        for queue in self._sqs_manager.queues:
-            if queue_name in queue:
-                return True
-        return False
-
 
 class QueryFlag(Enum):
+    Download_Files = 8
     Remove_Files = 4
     Create_Files = 2
     Update_Files = 1

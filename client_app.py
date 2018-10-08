@@ -1,18 +1,20 @@
 import utils
 import time
 import json
+import client_interface
+
 
 def main():
-    messaging_interface = utils.SqsMessagingInterface('Client')
+    messaging_interface = client_interface.SqsClientInterface()
     messaging_interface.daemon = True
     messaging_interface.start()
-    storing_interface = utils.S3StoringInterface()
-    storing_interface.daemon = True
-    storing_interface.start()
+    # storing_interface = utils.S3StoringInterface()
+    # storing_interface.daemon = True
+    # storing_interface.start()
 
-    while not messaging_interface._inbox_ready \
-            or not messaging_interface._outbox_ready \
-            or not storing_interface._storage_ready:
+    while not messaging_interface.inbox_ready \
+            or not messaging_interface.outbox_ready:
+        # or not storing_interface._storage_ready:
         time.sleep(1)
 
     choice = '0'
@@ -34,35 +36,43 @@ def main():
             send_messages(messaging_interface)
         elif choice == '2':
             print('Chosen option: Retrieve messages.')
-            retrieve_messages(storing_interface, messaging_interface._identity)
+            # TODO implement SQS petition to retrieve messages
+            retrieve_messages(messaging_interface)
+            # retrieve_messages(storing_interface, messaging_interface._identity)
         else:
             print('Please, choose a valid option.')
 
 
 def send_messages(messaging_interface):
     print('This is the echo message app.')
-    while not messaging_interface._inbox_ready or not messaging_interface._outbox_ready:
+    while not messaging_interface.inbox_ready or not messaging_interface.outbox_ready:
         time.sleep(1)
 
     while True:
         # time.sleep(0.1)
-        input_msg = input('>> ')
+        input_msg = input('')
         if not input_msg:
             print('Message body can\'t be empty.')
             continue
-        messaging_interface.send_message(input_msg, 'EchoSystem')
+        messaging_interface.send_message(input_msg)
         if input_msg == 'END':
             print('\n')
             break
 
 
-def retrieve_messages(storing_interface, identity):
-    print('This is the message retrieval app.')
-    print('Storage is ready. Querying all the messages from S3 bucket...')
-    storing_interface.download_file(str(identity) + '.json', '/tmp/' + str(identity) + '.json')
-    with open('/tmp/' + str(identity) + '.json') as json_data:
-        d = json.load(json_data)
-        print(d)
+def retrieve_messages(messaging_interface):
+    print('Querying messages to the service. Please stand-by.')
+    messaging_interface.retrieve_messages()
+    time.sleep(5)
+
+
+# def retrieve_messages(storing_interface, identity):
+#     print('This is the message retrieval app.')
+#     print('Storage is ready. Querying all the messages from S3 bucket...')
+#     storing_interface.download_file(str(identity) + '.json', '/tmp/' + str(identity) + '.json')
+#     with open('/tmp/' + str(identity) + '.json') as json_data:
+#         d = json.load(json_data)
+#         print(d)
 
 
 main()

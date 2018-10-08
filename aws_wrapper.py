@@ -23,6 +23,14 @@ class S3Manager(AwsWrapper):
         AwsWrapper.__init__(self, 's3')
         self.buckets = self._client.list_buckets()
 
+    def generate_url(self, file):
+        return self._client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": 'ta-assignment-1',
+                "Key": file["Key"],
+                "ResponseContentDisposition": "attachment; filename=" + file["filename"]
+            })
 
     def create_bucket(self, bucket_name):
         self._client.create_bucket(
@@ -45,6 +53,11 @@ class S3Manager(AwsWrapper):
 
     def buckets_to_array(self):
         return [bucket for bucket in (self.buckets or [])]
+
+    def list_files(self):
+        return self._client.list_objects(
+            Bucket='ta-assignment-1'
+        )
 
     @property
     def files(self):
@@ -80,9 +93,6 @@ class SqsManager(AwsWrapper):
         self.queues = self._client.list_queues()
 
     def _send_message(self, queue, author, message_body, addressee=None, cmd=None):
-        # if cmd is not None:
-        #     attributes = utils.MessageAttributes(author, addressee, cmd)
-        # else:
         attributes = utils.MessageAttributes(author, addressee, cmd)._message_attributes
         response = self._client.send_message(
             QueueUrl=queue,
@@ -106,24 +116,27 @@ class SqsManager(AwsWrapper):
         messages = []
         try:
             for message in response['Messages']:
-                # print('for message in response...')
-                # print(response)
                 message_addressee = message['MessageAttributes']['Addressee']['StringValue']
                 if str(addressee) in message_addressee:
                     messages.append(message)
-                    self._client.delete_message(
-                        QueueUrl=queue,
-                        ReceiptHandle=message['ReceiptHandle']
-                    )
                 else:
-                    self._client.change_message_visibility(
-                        QueueUrl=queue,
-                        ReceiptHandle=message['ReceiptHandle'],
-                        VisibilityTimeout=0
-                    )
+                    self.change_visibility_timeout(queue, message)
         except KeyError:
             time.sleep(0.1)
         return messages
+
+    def change_visibility_timeout(self, queue_url, message, visibility_timeout=0):
+        self._client.change_message_visibility(
+            QueueUrl=queue_url,
+            ReceiptHandle=message['ReceiptHandle'],
+            VisibilityTimeout=visibility_timeout
+        )
+
+    def delete_message(self, message, queue_url):
+        self._client.delete_message(
+            QueueUrl=queue_url,
+            ReceiptHandle=message['ReceiptHandle']
+        )
 
     def create_queue(self, queue_name, queue_attributes=None):
         if not queue_attributes:
@@ -161,6 +174,19 @@ class SqsManager(AwsWrapper):
                 return queue
         else:
             return False
+
+    def _check_sqs_queues(self, queue_name):
+        for queue in self.queues:
+            if queue_name in queue:
+                return True
+        return False
+
+    def _wait_for_queue_confirmation(self, queue_name):
+        while True:
+            for queue in self.queues:
+                if queue_name in queue:
+                    return True
+            time.sleep(1)
 
     def queues_to_array(self):
         return [queue for queue in (self.queues or [])]
