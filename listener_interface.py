@@ -1,29 +1,33 @@
 import aws_wrapper
 import random
-from threading import Thread
-from typing import Dict
-from utils import Query, QueryFlag
 import time
 import os
 import json
+import logging
+from threading import Thread
+from typing import Dict
+from utils import Query, Command, Constants
 
 
 class SqsListenerInterface(Thread):
-    inbox_queue_name = 'Inbox'
+    inbox_queue_name = Constants.INBOX_QUEUE_NAME.value
     inbox_ready = False
-    outbox_queue_name = 'Outbox'
+    outbox_queue_name = Constants.OUTBOX_QUEUE_NAME.value
     outbox_ready = False
     _clients: Dict[int, str] = {}
     _messages: Dict = {}
 
-    def __init__(self):
+    def __init__(self, sqs_manager):
+        logging.info('Initialized listener interface.')
         Thread.__init__(self)
         self._identity = random.getrandbits(32)
-        self._sqs_manager = aws_wrapper.SqsManager()
+        self._sqs_manager = sqs_manager
+        self._sqs_manager.bind_to(self.received_message)
         self._queries = []
 
+
     def run(self):
-        # TODO Get these parameters from configuration file.
+        logging.info('Initialized listener interface run method.')
         if not self._sqs_manager._check_sqs_queues(self.inbox_queue_name):
             self._sqs_manager.create_queue(self.inbox_queue_name)
         if not self._sqs_manager._check_sqs_queues(self.outbox_queue_name):
@@ -34,66 +38,79 @@ class SqsListenerInterface(Thread):
         self.outbox_ready = True
 
         while True:
-            received_messages = self.receive_message()
-            if received_messages:
-                for received_message in received_messages:
-                    self._process_message_content(received_message)
+            self.receive_message()
+            time.sleep(0.05)
 
-    def _process_message_content(self, received_message):
-        attributes = received_message['MessageAttributes']
+    def received_message(self, message):
+        attributes = message['MessageAttributes']
         client_id = attributes['Author']['StringValue']
         command = attributes['Command']['StringValue']
         filename = client_id + '.json'
-        if command == 'new-client':
-            print('Detected new client.')
-            self._clients[client_id] = filename
-            self._queries.append(Query(client_id, filename, QueryFlag.Create_Files))
-            self._sqs_manager.delete_message(received_message, self._sqs_manager.get_queue_url(self.inbox_queue_name))
-        elif client_id in self._clients.keys():
-            if command == 'client-end':
-                print('Client left the chat, but not the session.')
-                self._queries.append(Query(client_id, filename, QueryFlag.Update_Files))
-                print(self._messages)
-            elif command == 'client-left':
-                print('Client closed the connection.')
-                self._queries.append(Query(client_id, filename, QueryFlag.Remove_Files))
-            elif command == 'download-query':
-                print('Client queried conversations.')
-                self._queries.append(Query(client_id, filename, QueryFlag.Download_Files))
+        if client_id not in self._clients.keys():
+            logging.info('Detected command ' + command + ' from client ' + client_id)
+            if command == Command.ECHO_REQUEST.value:
+                self._sqs_manager.change_visibility_timeout(self._sqs_manager.get_queue_url(self.inbox_queue_name),
+                                                            message)
             else:
-                print('Echoing : ', received_message['Body'])
-                self.send_message(received_message['Body'], 'echo', received_message['MessageAttributes']['Author'])
-            author = attributes['Author']['StringValue']
-            if author in self._messages:
-                self._messages[author].append(received_message['Body'])
+                if command == Command.NEW_CLIENT.value:
+                    self._queries.append(Query(client_id, filename, Command.NEW_CLIENT))
+                elif command == Command.BEGIN_ECHO.value:
+                    self._clients[client_id] = filename
+                    self._queries.append(Query(client_id, filename, Command.BEGIN_ECHO))
+                elif command == Command.REMOVE_CLIENT.value:
+                    self._queries.append(Query(client_id, filename, Command.REMOVE_CLIENT))
+                elif command == Command.DOWNLOAD_REQUEST.value:
+                    self._queries.append(Query(client_id, filename, Command.DOWNLOAD_REQUEST))
+                elif command == Command.DOWNLOAD_URL_REQUEST.value:
+                    self._queries.append(Query(client_id, filename, Command.DOWNLOAD_URL_REQUEST))
+                self._sqs_manager.delete_message(message,
+                                                 self._sqs_manager.get_queue_url(self.inbox_queue_name))
+        elif client_id in self._clients.keys():
+            message_body = message['Body']
+            if command == Command.CLIENT_END.value:
+                logging.info('Client ' + client_id + ' left echo-chat.')
+                self._queries.append(Query(client_id, filename, Command.CLIENT_END))
+                messages = ''
+                for each_message in self._messages[client_id]:
+                    messages += each_message + ', '
+                logging.info('Messages to be updated to S3: ' + messages)
+                self._clients.pop(client_id)
+            elif command == Command.DOWNLOAD_URL_REQUEST.value:
+                logging.info('Client ' + client_id + ' queried a download link.')
+                logging.info('TODO : Remember to remove auto update of s3 link.')
+                self._sqs_manager.change_visibility_timeout(self._sqs_manager.get_queue_url(self.inbox_queue_name),
+                                                            message, 5)
+            else:
+                logging.info('Echoing : ' + message_body)
+                logging.info('Echoing a message with command : ' + command)
+                self.send_message(message_body, 'echo', client_id)
+
+            if client_id in self._messages:
+                self._messages[client_id].append(message_body)
             else:
                 conversation = []
-                conversation.append(received_message['Body'])
-                self._messages[author] = conversation
-            self._sqs_manager.delete_message(received_message, self._sqs_manager.get_queue_url(self.inbox_queue_name))
-        else:
-            self._sqs_manager.change_visibility_timeout(self._sqs_manager.get_queue_url(self.inbox_queue_name),
-                                                        received_message)
+                conversation.append(message_body)
+                self._messages[client_id] = conversation
+            self._sqs_manager.delete_message(message, self._sqs_manager.get_queue_url(self.inbox_queue_name))
 
     def send_message(self, message, command, addressee=None):
-        self._sqs_manager._send_message(self._sqs_manager.get_queue_url(self.outbox_queue_name), self._identity,
-                                        message,
-                                        addressee, command)
+        self._sqs_manager.send_message(self._sqs_manager.get_queue_url(self.outbox_queue_name), self._identity,
+                                       message,
+                                       addressee, command)
 
     def receive_message(self):
-        return self._sqs_manager._receive_message(self._sqs_manager.get_queue_url(self.inbox_queue_name), 'EchoSystem')
+        self._sqs_manager.receive_message(self._sqs_manager.get_queue_url(self.inbox_queue_name), 'EchoSystem')
 
 
 class S3StoringInterface(Thread):
     _storage_ready = False
-    bucket_name = 'ta-assignment-1'
+    bucket_name = Constants.BUCKET_NAME.value
 
     def __init__(self):
         Thread.__init__(self)
         self._s3_manager = aws_wrapper.S3Manager()
 
     def run(self):
-        # TODO Get these parameters from configuration file.
         if not self._check_s3_bucket(self.bucket_name):
             self._s3_manager.create_bucket(self.bucket_name)
         self._wait_for_bucket_confirmation(self.bucket_name)
@@ -122,8 +139,11 @@ class S3StoringInterface(Thread):
             file_data_json = json.loads(local_file.read())
             if query.client_id in file_data_json:
                 old_json_content = file_data_json[query.client_id]
-                old_json_content.append(messages[query.client_id])
-                dict_of_strings[query.client_id] = old_json_content
+                try:
+                    old_json_content.append(messages[query.client_id])
+                    dict_of_strings[query.client_id] = old_json_content
+                except KeyError:
+                    logging.info('No new messages.')
                 local_file.close()
                 local_file = open(local_file_path, 'w')
             else:
@@ -145,18 +165,15 @@ class S3StoringInterface(Thread):
     def download_file(self, filename, local_path, bucket=None):
         if bucket is None:
             bucket = self.bucket_name
-        print('Asked to download a file.')
         self._s3_manager._resource.Bucket(bucket).download_file(filename, local_path)
 
     def remove_file(self, filename, bucket=None):
         if bucket is None:
             bucket = self.bucket_name
-        print('Asked to remove a file.')
         response = self._s3_manager._client.delete_object(
             Bucket=bucket,
             Key=filename,
         )
-        print(response)
 
     def _wait_for_bucket_confirmation(self, bucket=None):
         if bucket is None:

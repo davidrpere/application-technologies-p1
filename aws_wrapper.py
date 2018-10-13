@@ -1,7 +1,7 @@
 import time
 import boto3
 import utils
-import os
+import logging
 
 
 class AwsWrapper(object):
@@ -13,13 +13,11 @@ class AwsWrapper(object):
 
 class Ec2Manager(AwsWrapper):
     def __init__(self):
-        print('Hello, ec2 manager')
         AwsWrapper.__init__(self, 'ec2')
 
 
 class S3Manager(AwsWrapper):
     def __init__(self):
-        print('Hello, s3 manager')
         AwsWrapper.__init__(self, 's3')
         self.buckets = self._client.list_buckets()
 
@@ -27,7 +25,7 @@ class S3Manager(AwsWrapper):
         return self._client.generate_presigned_url(
             "get_object",
             Params={
-                "Bucket": 'ta-assignment-1',
+                "Bucket": utils.Constants.BUCKET_NAME.value,
                 "Key": file["Key"],
                 "ResponseContentDisposition": "attachment; filename=" + file["filename"]
             })
@@ -37,7 +35,7 @@ class S3Manager(AwsWrapper):
             ACL='public-read-write',
             Bucket=bucket_name,
             CreateBucketConfiguration={
-                'LocationConstraint': 'eu-west-3'
+                'LocationConstraint': utils.Constants.REGION.value
             }
         )
 
@@ -56,13 +54,13 @@ class S3Manager(AwsWrapper):
 
     def list_files(self):
         return self._client.list_objects(
-            Bucket='ta-assignment-1'
+            Bucket=utils.Constants.BUCKET_NAME.value
         )
 
     @property
     def files(self):
         self.files = self._client.list_objects(
-            Bucket='ta-assignment-1'
+            Bucket=utils.Constants.BUCKET_NAME.value
         )
         # self.files = response['Contents']
         return self._files
@@ -91,8 +89,12 @@ class SqsManager(AwsWrapper):
     def __init__(self):
         AwsWrapper.__init__(self, 'sqs')
         self.queues = self._client.list_queues()
+        self._observers = []
 
-    def _send_message(self, queue, author, message_body, addressee=None, cmd=None):
+    def bind_to(self, callback):
+        self._observers.append(callback)
+
+    def send_message(self, queue, author, message_body, addressee=None, cmd=None):
         attributes = utils.MessageAttributes(author, addressee, cmd)._message_attributes
         response = self._client.send_message(
             QueueUrl=queue,
@@ -103,27 +105,26 @@ class SqsManager(AwsWrapper):
             )
         )
 
-    def _receive_message(self, queue, addressee=None):
+    def receive_message(self, queue, addressee=None):
         response = self._client.receive_message(
             QueueUrl=queue,
-            MaxNumberOfMessages=1,
+            MaxNumberOfMessages=5,
             MessageAttributeNames=[
                 'All'
             ],
             VisibilityTimeout=10,
-            WaitTimeSeconds=10
+            WaitTimeSeconds=1
         )
-        messages = []
         try:
             for message in response['Messages']:
                 message_addressee = message['MessageAttributes']['Addressee']['StringValue']
                 if str(addressee) in message_addressee:
-                    messages.append(message)
+                    for callback in self._observers:
+                        callback(message)
                 else:
                     self.change_visibility_timeout(queue, message)
         except KeyError:
             time.sleep(0.1)
-        return messages
 
     def change_visibility_timeout(self, queue_url, message, visibility_timeout=0):
         self._client.change_message_visibility(
@@ -151,9 +152,9 @@ class SqsManager(AwsWrapper):
                     queue = self._client.create_queue(**request_params)
                     queue_created = True
                 except self._client.exceptions.QueueDeletedRecently:
-                    print('Can\'t create queue yet. AWS won\'t let create it.')
+                    logging.info('Can\'t create queue yet. AWS won\'t let create it.')
                     time.sleep(10)
-            print('Created queue: ', queue)
+            logging.info('Created queue: ' + queue)
         else:
             dictionary_attributes = queue_attributes.get_dictionary()
             self._client.create_queue(queue_name, dictionary_attributes)
@@ -214,8 +215,8 @@ def test_sqs():
     time.sleep(5)
 
     print('testing queue creation')
-    manager.create_queue('Inbox')
-    manager.create_queue('Outbox')
+    manager.create_queue(utils.Constants.INBOX_QUEUE_NAME.value)
+    manager.create_queue(utils.Constants.OUTBOX_QUEUE_NAME.value)
 
     time.sleep(60)
     print(manager.queues_to_array())
@@ -229,15 +230,9 @@ def test_sqs():
     print(manager.queues_to_array())
 
 
-def test_s3():
-    print('Main test unit for the s3-manager')
-    # TODO implement s3 unit tests.
-
-
 def main():
     print('Performing unit tests for Amazon Web Services Wrappers.')
     test_sqs()
-    test_s3()
 
 
 if __name__ == '__main__':

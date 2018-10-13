@@ -9,34 +9,35 @@ from enum import Enum
 
 class S3StoringInterface(Thread):
     _storage_ready = False
+    BUCKET_NAME = 'ta-assignment-1'
 
     def __init__(self):
-        print('Hello, S3 storing interface')
         Thread.__init__(self)
         self._s3_manager = aws_wrapper.S3Manager()
 
     def run(self):
-        # TODO Get these parameters from configuration file.
-        print('S3 interface run method.')
-        if not self._check_s3_bucket('ta-assignment-1'):
-            self._s3_manager.create_bucket('ta-assignment-1')
-        self._wait_for_bucket_confirmation('ta-assignment-1')
+        if not self._check_s3_bucket(self.BUCKET_NAME):
+            self._s3_manager.create_bucket(self.BUCKET_NAME)
+        self._wait_for_bucket_confirmation(self.BUCKET_NAME)
         self._storage_ready = True
 
         while True:
             time.sleep(5)
 
-    def upload_file(self, filename, bucket='ta-assignment-1'):
-        print('Asked to upload a file.')
+    def upload_file(self, filename, bucket=None):
+        if bucket is None:
+            bucket = self.BUCKET_NAME
         file_name_r = os.path.basename(filename)
         self._s3_manager._resource.meta.client.upload_file(filename, bucket, file_name_r)
 
-    def download_file(self, filename, local_path, bucket='ta-assignment-1'):
-        print('Asked to download a file.')
+    def download_file(self, filename, local_path, bucket=None):
+        if bucket is None:
+            bucket = self.BUCKET_NAME
         self._s3_manager._resource.Bucket(bucket).download_file(filename, local_path)
 
-    def remove_file(self, filename, bucket='ta-assignment-1'):
-        print('Asked to remove a file.')
+    def remove_file(self, filename, bucket=None):
+        if bucket is None:
+            bucket = self.BUCKET_NAME
         response = self._s3_manager._client.delete_object(
             Bucket=bucket,
             Key=filename,
@@ -63,121 +64,43 @@ class S3StoringInterface(Thread):
         return False
 
 
-class SqsMessagingInterface(Thread):
-    _outbox_ready = False
-    _inbox_ready = False
-    _clients: Dict[int, str] = {}
-    _messages: Dict = {}
+class Constants(Enum):
+    INBOX_QUEUE_NAME = 'Inbox'
+    OUTBOX_QUEUE_NAME = 'Outbox'
+    ECHOSYSTEM_ID = 'EchoSystem'
+    HELLO_BODY = 'Started session.'
+    BUCKET_NAME = 'ta-assignment-1'
+    REGION = 'eu-west-3'
 
-    def __init__(self, role):
-        print('Hello, Messaging interface')
-        Thread.__init__(self)
-        self._identity = random.getrandbits(32)
-        self._sqs_manager = aws_wrapper.SqsManager()
-        self._role = role
-        if self._role == 'EchoSystem':
-            self._queries = []
-        
-    def run(self):
-        # TODO Get these parameters from configuration file.
-        if not self._sqs_manager._check_sqs_queues('Inbox'):
-            self._sqs_manager.create_queue('Inbox')
-        if not self._sqs_manager._check_sqs_queues('Outbox'):
-            self._sqs_manager.create_queue('Outbox')
-        self._sqs_manager._wait_for_queue_confirmation('Inbox')
-        self._inbox_ready = True
-        self._sqs_manager._wait_for_queue_confirmation('Outbox')
-        self._outbox_ready = True
-
-        if self._role == 'Client':
-            self._begin_connection()
-
-        while True:
-            received_messages = self.receive_message()
-            if received_messages:
-                for received_message in received_messages:
-                    if self._role == 'EchoSystem':
-                        self._process_message_content(received_message)
-                    elif self._role == 'Client':
-                        print('\nEcho says... >>', received_message['Body'])
-
-    def _begin_connection(self):
-        print('Starting connection from messaging interface...')
-        self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, self._identity,
-                                        'EchoSystem', 'new-client')
-
-    def end_connection(self):
-        print('Ending connection from messaging interface...')
-        self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, self._identity,
-                                        'EchoSystem', 'client-left')
-
-    def _process_message_content(self, received_message):
-        # TODO fix
-        # print(received_message)
-        # print(received_message['MessageAttributes']['Command'])
-        attributes = received_message['MessageAttributes']
-        client_id = attributes['Author']['StringValue']
-        filename = client_id + '.json'
-        if received_message['MessageAttributes']['Command']['StringValue'] == 'new-client':
-            print('Detected new client.')
-            self._clients[client_id] = filename
-            self._queries.append(Query(client_id, filename, QueryFlag.Create_Files))
-        elif received_message['MessageAttributes']['Command']['StringValue'] == 'client-end':
-            # TODO save chat to S3
-            print('Client left the chat, but not the session.')
-            self._queries.append(Query(client_id, filename, QueryFlag.Update_Files))
-            print(self._messages)
-        elif received_message['MessageAttributes']['Command']['StringValue'] == 'client-left':
-            # TODO delete file from S3
-            print('Client closed the connection.')
-            self._queries.append(Query(client_id, filename, QueryFlag.Remove_Files))
-        else:
-            print('Echoing : ', received_message['Body'])
-            self.send_message(received_message['Body'], received_message['MessageAttributes']['Author'])
-        author = attributes['Author']['StringValue']
-        if author in self._messages:
-            self._messages[author].append(received_message['Body'])
-        else:
-            conversation = []
-            conversation.append(received_message['Body'])
-            self._messages[author] = conversation
-
-    def send_message(self, message, addressee=None):
-        if self._role == 'EchoSystem':
-            self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Outbox'), self._identity, message,
-                                            addressee)
-        elif self._role == 'Client':
-            if message == 'END':
-                self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, message,
-                                                'EchoSystem', 'client-end')
-            else:
-                self._sqs_manager._send_message(self._sqs_manager.get_queue_url('Inbox'), self._identity, message,
-                                                'EchoSystem')
-
-    def receive_message(self):
-        if self._role == 'EchoSystem':
-            return self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Inbox'), 'EchoSystem')
-        elif self._role == 'Client':
-            return self._sqs_manager._receive_message(self._sqs_manager.get_queue_url('Outbox'), self._identity)
+    def __str__(self):
+        return str(self.value)
 
 
-class QueryFlag(Enum):
-    Download_Files = 8
-    Remove_Files = 4
-    Create_Files = 2
-    Update_Files = 1
+class Command(Enum):
+    BEGIN_ECHO = 'begin-chat'
+    ECHO_REPLY = 'echo'
+    ECHO_REQUEST = 'echo-request'
+    DOWNLOAD_REQUEST = 'download-query'
+    DOWNLOAD_REPLY = 'download-reply'
+    DOWNLOAD_URL_REQUEST = 'download-url-query'
+    DOWNLOAD_URL_REPLY = 'download-url-reply'
+    REMOVE_CLIENT = 'client-left'
+    NEW_CLIENT = 'new-client'
+    CLIENT_END = 'client-end'
+
+    def __str__(self):
+        return str(self.value)
 
 
 class Query:
 
-    def __init__(self, client, filename, query_type):
+    def __init__(self, client, filename, command_type):
         self.client_id = client
-        self.query_type = QueryFlag(query_type)
+        self.query_type = Command(command_type)
         self.query_param = filename
         
 
 class MessageAttributes(object):
-    # TODO left on purpose. Might want to overload more parameters in the future.
     def __init__(self, author, addressee, cmd=None):
         self._message_attributes = {
             'Author': {
@@ -272,11 +195,6 @@ class QueueAttributes(object):
 def main():
     print('Performing unit test for utils.py')
     s3_storing_interface = S3StoringInterface()
-    # response = s3_storing_interface._check_file_exists('test-file')
-    # print(response)
-    # for keys in response['Contents']:
-    #     print(keys)
-    #     print('---')
 
     if s3_storing_interface._check_file_exists('gracias_jeff.txt') is True:
         s3_storing_interface._s3_manager.remove_file('gracias_jeff.txt')
