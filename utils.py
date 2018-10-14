@@ -167,7 +167,7 @@ class QueueAttributes(object):
     _delay_seconds = '0'
     _message_retention_period = '345600'
     _maximum_message_size = '262144'
-    _receive_message_wait_time_seconds = '0'
+    _receive_message_wait_time_seconds = '20'
     _visibility_timeout = '0'
 
     def __init__(self, delay_seconds=None, message_retention_period=None, maximum_message_size=None,

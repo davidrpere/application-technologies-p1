@@ -47,7 +47,7 @@ class SqsClientInterface(Thread):
 
         while True:
             self.receive_message()
-            time.sleep(0.1)
+            time.sleep(2)
 
     def retrieve_messages(self):
         self._sqs_manager.send_message(self._sqs_manager.get_queue_url(self.inbox_queue_name), self._identity,
