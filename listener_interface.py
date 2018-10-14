@@ -39,7 +39,7 @@ class SqsListenerInterface(Thread):
 
         while True:
             self.receive_message()
-            time.sleep(0.05)
+            time.sleep(2)
 
     def received_message(self, message):
         attributes = message['MessageAttributes']

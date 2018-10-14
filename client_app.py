@@ -38,8 +38,8 @@ def main():
             print('Please, choose a valid option.')
 
 
-def custom_callback(message):
-    print('Custom callback')
+# def custom_callback(message):
+#     print('Custom callback')
 
 def send_messages(messaging_interface):
     print('This is the echo message app.')

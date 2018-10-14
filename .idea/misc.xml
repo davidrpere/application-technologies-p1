@@ -3,5 +3,5 @@
   <component name="JavaScriptSettings">
     <option name="languageLevel" value="ES6" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="AWS-EC2" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="ec2-35-180-113-111.eu-west-3.compute.amazonaws.com" project-jdk-type="Python SDK" />
 </project>
