@@ -113,7 +113,7 @@ class SqsManager(AwsWrapper):
                 'All'
             ],
             VisibilityTimeout=10,
-            WaitTimeSeconds=20
+            WaitTimeSeconds=1
         )
         try:
             for message in response['Messages']:

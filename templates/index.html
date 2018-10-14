@@ -181,11 +181,11 @@
     </div>
 </nav>
 <p>
-    <a class="btn btn-primary" data-toggle="collapse" href="#collapseChat"
+    <a class="btn btn-primary" onclick="begin_chat()" data-toggle="collapse" href="#collapseChat"
        role="button" aria-expanded="false" aria-controls="collapseChat" id="messageButton">
         Chat
     </a>
-    <button class="btn btn-primary" type="button" data-target="#download"
+    <button class="btn btn-primary" onclick="query_download()" type="button" data-target="#download"
             id="downloadButton">
         Download chats
     </button>
@@ -212,13 +212,15 @@
 
     let chat_enabled = false;
     let intervalID = 0;
-    let user_identity = {{ identity }};
-
-    $("#downloadButton").click(query_download);
-    $("#messageButton").click(begin_chat);
+    let user_identity = {
+    {
+        identity
+    }
+    }
 
     function begin_chat() {
         if (chat_enabled == false) {
+            // alert('Begin chat for user ' + identity);
             intervalID = setInterval(update_values, 1000);
             var xmlhttp = new XMLHttpRequest();
             xmlhttp.open("POST", "/begin-chat");
@@ -229,6 +231,7 @@
 
             chat_enabled = true;
         } else {
+            // alert('End chat for user ' + identity);
             clearInterval(intervalID);
             var xmlhttp = new XMLHttpRequest();
             xmlhttp.open("POST", "/end-chat");
@@ -245,15 +248,9 @@
 
     function query_download() {
         var xmlhttp = new XMLHttpRequest();
-        xmlhttp.open("GET", "/download?identity="+user_identity);
-        xmlhttp.onreadystatechange = function() {
-            if (xmlhttp.readyState == 4 && xmlhttp.status == 200)
-            {
-                var link = JSON.parse(xmlhttp.responseText);
-                window.location = link['url'];
-            }
-        };
-        xmlhttp.send()
+        xmlhttp.open("GET", "/download");
+        xmlhttp.setRequestHeader("Content-Type", "application/json");
+        xmlhttp.send(JSON.stringify({identity: user_identity}));
     }
 
     var me = {};
@@ -316,6 +313,8 @@
                 if (text == 'END') {
                     begin_chat($('#user_identity').val());
                 } else {
+                    // let identity_val = $('#user_identity').val();
+                    // alert(user_identity);
                     let xmlhttp = new XMLHttpRequest();
                     xmlhttp.open("POST", "/send");
                     xmlhttp.setRequestHeader("Content-Type", "application/json");
@@ -327,7 +326,11 @@
     });
 
     function update_values() {
-        $SCRIPT_ROOT = {{ request.script_root | tojson | safe }}
+        $SCRIPT_ROOT = {
+        {
+            request.script_root | tojson | safe
+        }
+    }
         ;
         $.getJSON($SCRIPT_ROOT + "/_update", {identity: user_identity},
             function (data) {
