@@ -1,21 +1,31 @@
-import time
-from typing import Dict, Any
-import aws_wrapper
-import random
-from threading import Thread
 import os
+import time
+import aws_wrapper
+import logging
+import botocore
 from enum import Enum
+from threading import Thread
 
 
 class S3StoringInterface(Thread):
+    """Class for interfacing the interaction with Amazon Simple Storage Service.
+
+    Default bucket name is hardcoded.
+    """
     _storage_ready = False
     BUCKET_NAME = 'ta-assignment-1'
 
-    def __init__(self):
+    def __init__(self, bucket_name):
+        """Instantiates a S3 Storing interface object.
+        """
+        if bucket_name is not None:
+            self.BUCKET_NAME = bucket_name
         Thread.__init__(self)
         self._s3_manager = aws_wrapper.S3Manager()
 
     def run(self):
+        """Checks for the configured bucket to exist and runs forever doing nothing.
+        """
         if not self._check_s3_bucket(self.BUCKET_NAME):
             self._s3_manager.create_bucket(self.BUCKET_NAME)
         self._wait_for_bucket_confirmation(self.BUCKET_NAME)
@@ -25,26 +35,48 @@ class S3StoringInterface(Thread):
             time.sleep(5)
 
     def upload_file(self, filename, bucket=None):
+        """Uploads the specified local file to the default S3 bucket.
+
+        If desired, another bucket can be specified.
+        """
         if bucket is None:
             bucket = self.BUCKET_NAME
         file_name_r = os.path.basename(filename)
         self._s3_manager._resource.meta.client.upload_file(filename, bucket, file_name_r)
 
     def download_file(self, filename, local_path, bucket=None):
+        """Downloads the specified file from the default S3 bucket to the local path.
+
+        If desired, another bucket can be specified.
+        """
         if bucket is None:
             bucket = self.BUCKET_NAME
-        self._s3_manager._resource.Bucket(bucket).download_file(filename, local_path)
+        try:
+            self._s3_manager._resource.Bucket(bucket).download_file(filename, local_path)
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == "404":
+                logging.info('Tried to download file ' + filename + ' from bucket ' + bucket + ', file does not exist.')
+            else:
+                raise
 
     def remove_file(self, filename, bucket=None):
+        """Removes the specified file from the default bucket. If it doesn't exist, it does nothing.
+
+        If desired, another bucket can be specified.
+        """
         if bucket is None:
             bucket = self.BUCKET_NAME
         response = self._s3_manager._client.delete_object(
             Bucket=bucket,
             Key=filename,
         )
-        print(response)
+        logging.info('Tried to delete file ' + filename + ' from bucket ' + bucket + ', response: ' + response)
 
     def _wait_for_bucket_confirmation(self, bucket_name):
+        """Waits until the specified bucket exists.
+
+        This method effectively queries the S3 bucket list.
+        """
         while True:
             for bucket in self._s3_manager.buckets:
                 if bucket_name in bucket:
@@ -52,12 +84,20 @@ class S3StoringInterface(Thread):
             time.sleep(1)
 
     def _check_file_exists(self, file_name):
+        """Returns true if the specified file exists, false otherwise.
+
+        This method effectively queries the S3 keys list.
+        """
         for file in self._s3_manager.files:
             if file_name == file:
                 return True
         return False
 
     def _check_s3_bucket(self, bucket_name):
+        """Returns true if the specified bucket exists, false otherwhise.
+
+        This method effectively queries the S3 bucket list.
+        """
         for bucket in self._s3_manager.buckets:
             if bucket_name in bucket:
                 return True
@@ -65,6 +105,8 @@ class S3StoringInterface(Thread):
 
 
 class Constants(Enum):
+    """Class holding the default values for the EchoSystem.
+    """
     INBOX_QUEUE_NAME = 'Inbox'
     OUTBOX_QUEUE_NAME = 'Outbox'
     ECHOSYSTEM_ID = 'EchoSystem'
@@ -73,10 +115,14 @@ class Constants(Enum):
     REGION = 'eu-west-3'
 
     def __str__(self):
+        """Returns the string value of the member variable.
+        """
         return str(self.value)
 
 
 class Command(Enum):
+    """Class holding the default values for the EchoSystem commands.
+    """
     BEGIN_ECHO = 'begin-chat'
     ECHO_REPLY = 'echo'
     ECHO_REQUEST = 'echo-request'
@@ -89,19 +135,31 @@ class Command(Enum):
     CLIENT_END = 'client-end'
 
     def __str__(self):
+        """Returns the string value of the member variable.
+        """
         return str(self.value)
 
 
 class Query:
+    """Class representing a Query, issued from interfaces to client applications.
+    """
 
     def __init__(self, client, filename, command_type):
+        """Instantiates the Query element, specified by the client, filename and command type.
+        """
         self.client_id = client
         self.query_type = Command(command_type)
         self.query_param = filename
         
 
 class MessageAttributes(object):
+    """Class holding the default message attributes composition.
+    """
     def __init__(self, author, addressee, cmd=None):
+        """Instantiates a 'MessageAttributes' element for a SQS Message with the specified parameters.
+
+        Command is empty by default.
+        """
         self._message_attributes = {
             'Author': {
                 'DataType': 'String',
@@ -119,6 +177,10 @@ class MessageAttributes(object):
 
 
 class BucketAttributes(object):
+    """Class holding the default attributes for creating a bucket.
+
+    Values are hardcoded for our purpose.
+    """
     _acl = 'public-read-write'
     _bucket = 'ta-assignment-1'
     _location_constraint = {'LocationConstraint': 'eu-west-3'}
@@ -130,6 +192,10 @@ class BucketAttributes(object):
 
     def __init__(self, acl=None, bucket=None, location_constraint=None, grant_full_control=None,
                  grant_read=None, grant_read_acp=None, grant_write=None, grant_write_acp=None):
+        """Instantiates attributes for a S3 Bucket.
+
+        If any value is not specified, default value is used.
+        """
         if acl is not None:
             self._acl = acl
         if bucket is not None:
@@ -148,6 +214,8 @@ class BucketAttributes(object):
             self._grant_write_acp = grant_write_acp
 
     def get_dictionary(self):
+        """Returns the dictionary element for the bucket element.
+        """
         default_params = {
             'ACL': self._acl,
             'Bucket': self._bucket,
@@ -164,6 +232,10 @@ class BucketAttributes(object):
 
 
 class QueueAttributes(object):
+    """Class holding the attributes for a SQS Queue.
+
+    Default values are hardcoded for our purpose.
+    """
     _delay_seconds = '0'
     _message_retention_period = '345600'
     _maximum_message_size = '262144'
@@ -172,6 +244,10 @@ class QueueAttributes(object):
 
     def __init__(self, delay_seconds=None, message_retention_period=None, maximum_message_size=None,
                  receive_message_wait_time_seconds=None, visibility_timeout=None):
+        """Instantiates attributes for a SQS Queue.
+
+        If any value is not specified, default value is used.
+        """
         if delay_seconds is not None:
             self._delay_seconds = delay_seconds
         if message_retention_period is not None:
@@ -184,6 +260,8 @@ class QueueAttributes(object):
             self._visibility_timeout = visibility_timeout
 
     def get_dictionary(self):
+        """Returns the dictionary element for the queue element.
+        """
         default_params = {'DelaySeconds': self._delay_seconds,
                           'MaximumMessageSize': self._maximum_message_size,
                           'MessageRetentionPeriod': self._message_retention_period,
@@ -193,6 +271,8 @@ class QueueAttributes(object):
 
 
 def main():
+    """Mock main method for testing the behaviour of the class implementation.
+    """
     print('Performing unit test for utils.py')
     s3_storing_interface = S3StoringInterface()
 

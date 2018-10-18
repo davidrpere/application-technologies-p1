@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="AWS-EC2">
+  <component name="PublishConfigData" autoUpload="Always" serverName="application-technologies-p1-amazon-ec2">
     <serverData>
-      <paths name="AWS-EC2">
+      <paths name="application-technologies-p1-amazon-ec2">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/pycharm_project_610" local="$PROJECT_DIR$" />
+            <mapping deploy="/application-technology-p1" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

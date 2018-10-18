@@ -1,0 +1,11 @@
+[Unit]
+Description=Application Technologies AWS Web Server service.
+After=multi-user.target
+
+[Service]
+Type=idle
+User=ec2-user
+ExecStart=/usr/bin/python3 /home/ec2-user/application-technology-p1/web_server.py
+
+[Install]
+WantedBy=multi-user.target

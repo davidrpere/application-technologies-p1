@@ -1,14 +1,33 @@
-import utils
 import time
-import json
+import logging
+import signal, sys
 import client_interface, aws_wrapper
 
 
 def main():
+    """ Client app. Implements, by using the client interface, the basic behaviour of the client console app.
+    """
+
+    def handler(signum, frame):
+        """ Catches signals from the system to close the program.
+
+        Sends end connection command to listeners before leaving.
+        """
+        logging.error('Catch signal, terminating.')
+        global_messaging_interface.end_connection()
+        sys.exit()
+
+    signal.signal(signal.SIGILL, handler)
+    signal.signal(signal.SIGABRT, handler)
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
+
     sqs_manager = aws_wrapper.SqsManager()
     messaging_interface = client_interface.SqsClientInterface(sqs_manager)
     messaging_interface.daemon = True
     messaging_interface.start()
+
+    global_messaging_interface = messaging_interface
 
     while not messaging_interface.inbox_ready \
             or not messaging_interface.outbox_ready:
@@ -24,7 +43,6 @@ def main():
         choice = input('Please make a choice: ')
 
         if choice == 'q':
-            # TODO cleanup
             print('Closing...')
             messaging_interface.end_connection()
             exit()
@@ -38,10 +56,13 @@ def main():
             print('Please, choose a valid option.')
 
 
-# def custom_callback(message):
-#     print('Custom callback')
-
 def send_messages(messaging_interface):
+    """ EchoApp subroutine.
+
+    Sends begin chat command and waits for user input. Sends messages as user presses ENTER key.
+    Doesn't allow empty messages. Exits on user typing "END".
+    :param messaging_interface: Messaging interface.
+    """
     print('This is the echo message app.')
     messaging_interface.begin_chat()
     while not messaging_interface.inbox_ready or not messaging_interface.outbox_ready:
@@ -60,6 +81,11 @@ def send_messages(messaging_interface):
 
 
 def retrieve_messages(messaging_interface):
+    """ SearchingApp subroutine.
+
+    Queries asynchronously messages from S3 via SQS message. Output is printed when received.
+    :param messaging_interface: Messaging interface.
+    """
     print('Querying messages to the service. Please stand-by.')
     messaging_interface.retrieve_messages()
     time.sleep(5)

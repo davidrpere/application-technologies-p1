@@ -175,7 +175,7 @@
 <body>
 
 <!-- Navigation -->
-<nav class="navbar navbar-light bg-light static-top">
+<nav class="navbar navbar-light bg-light static-top" id="navbarAppTeP1">
     <div class="container">
         <a class="navbar-brand" href="/">Application Technologies P1</a>
     </div>
@@ -194,7 +194,7 @@
 <div class="collapse" id="collapseChat">
     <div class="container">
         <div class="row">
-            <div class="col-sm-3 col-sm-offset-4 frame">
+            <div class="col-lg-6 frame">
                 <ul></ul>
                 <div>
                     <div class="msj-rta macro" style="margin:auto">
@@ -217,6 +217,10 @@
     $("#downloadButton").click(query_download);
     $("#messageButton").click(begin_chat);
 
+    $('#navbarAppTeP1').click(function (e) {
+        e.preventDefault();
+    });
+
     function begin_chat() {
         if (chat_enabled == false) {
             intervalID = setInterval(update_values, 1000);
@@ -234,6 +238,8 @@
             xmlhttp.open("POST", "/end-chat");
             xmlhttp.setRequestHeader("Content-Type", "application/json");
             xmlhttp.send(JSON.stringify({identity: user_identity}));
+
+            $('#collapseChat').collapse('hide');
 
             setTimeout(function () {
                 $('#downloadButton').prop('disabled', false);
@@ -265,13 +271,12 @@
         var minutes = date.getMinutes();
         var ampm = hours >= 12 ? 'PM' : 'AM';
         hours = hours % 12;
-        hours = hours ? hours : 12; // the hour '0' should be '12'
+        hours = hours ? hours : 12;
         minutes = minutes < 10 ? '0' + minutes : minutes;
         var strTime = hours + ':' + minutes + ' ' + ampm;
         return strTime;
     }
 
-    //-- No use time. It is a javaScript effect.
     function insertChat(who, text, time = 0) {
         var control = "";
         var date = formatAMPM(new Date());

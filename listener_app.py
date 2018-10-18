@@ -1,12 +1,30 @@
 import time
 import utils
-import os
+import os, sys
+import signal
+import subprocess
 import listener_interface, aws_wrapper
 import logging
 
 
 def main():
+    """ Listener app. Implements, by using the listener interface, the basic behaviour of a listener.
+    """
+
+    def handler(signum, frame):
+        logging.error('Catch signal, terminating.')
+        bash_command = 'rm -rf /tmp/*.json'
+        process = subprocess.Popen(bash_command.split(), stdout=subprocess.PIPE)
+        output, error = process.communicate()
+        sys.exit()
+
+    signal.signal(signal.SIGILL, handler)
+    signal.signal(signal.SIGABRT, handler)
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
+
     logging.getLogger().setLevel(logging.INFO)
+
     sqs_manager = aws_wrapper.SqsManager()
     messaging_interface = listener_interface.SqsListenerInterface(sqs_manager)
     storing_interface = listener_interface.S3StoringInterface()
@@ -25,25 +43,31 @@ def main():
         for query in messaging_interface._queries:
             if query.query_type == utils.Command.REMOVE_CLIENT:
                 storing_interface.remove_file(query.query_param)
-                try:
-                    os.remove('/tmp/' + query.query_param)
-                except FileNotFoundError:
-                    logging.info('Asked to remove a file which isn\'t on this machine')
+                # try:
+                #     os.remove('/tmp/' + query.query_param)
+                # except FileNotFoundError:
+                #     logging.info('Asked to remove a file which isn\'t on this machine')
             elif query.query_type == utils.Command.BEGIN_ECHO:
+                messaging_interface._clients[query.client_id] = query.query_param
                 messaging_interface._messages[query.client_id] = ['--Echo began--']
+
             elif query.query_type == utils.Command.CLIENT_END:
                 storing_interface.upload_file_from_dict(query, messaging_interface._messages)
                 messaging_interface._messages.pop(query.client_id)
+                messaging_interface._clients.pop(query.client_id)
+
             elif query.query_type == utils.Command.NEW_CLIENT:
                 init_msg = [utils.Constants.HELLO_BODY.value]
                 init_msg_dict = {query.client_id: init_msg}
                 storing_interface.upload_file_from_dict(query, init_msg_dict)
+
             elif query.query_type == utils.Command.DOWNLOAD_REQUEST:
                 logging.info('Client asked to retrieve messages.')
                 if storing_interface._check_file_exists(query.query_param):
                     url = storing_interface.get_file_url(query.query_param)
                     if url is not None:
                         messaging_interface.send_message(url, utils.Command.DOWNLOAD_REPLY, query.client_id)
+
             elif query.query_type == utils.Command.DOWNLOAD_URL_REQUEST:
                 logging.info('Client is updating its URL.')
                 if storing_interface._check_file_exists(query.query_param):
