@@ -1,0 +1,133 @@
+drodriguez@drX1:~$ aws ec2 describe-launch-templates
+{
+    "LaunchTemplates": [
+        {
+            "LaunchTemplateId": "lt-07189739a245bdfce",
+            "LaunchTemplateName": "EC2-WebServer",
+            "CreateTime": "2018-10-18T21:36:16.000Z",
+            "CreatedBy": "arn:aws:iam::426768208976:root",
+            "DefaultVersionNumber": 1,
+            "LatestVersionNumber": 1
+        },
+        {
+            "LaunchTemplateId": "lt-0d212073acc463129",
+            "LaunchTemplateName": "EC2-Listener",
+            "CreateTime": "2018-10-20T18:35:41.000Z",
+            "CreatedBy": "arn:aws:iam::426768208976:root",
+            "DefaultVersionNumber": 1,
+            "LatestVersionNumber": 1
+        },
+        {
+            "LaunchTemplateId": "lt-0333d3dc1e4c4864b",
+            "LaunchTemplateName": "TA-base-final",
+            "CreateTime": "2018-10-18T20:38:54.000Z",
+            "CreatedBy": "arn:aws:iam::426768208976:root",
+            "DefaultVersionNumber": 1,
+            "LatestVersionNumber": 1
+        }
+    ]
+}
+drodriguez@drX1:~$ aws ec2 run-instances --launch-template LaunchTemplateName=EC2-Listener
+{
+    "Groups": [],
+    "Instances": [
+        {
+            "AmiLaunchIndex": 0,
+            "ImageId": "ami-08bac4a526f7c9046",
+            "InstanceId": "i-02428ae7bf36675e2",
+            "InstanceType": "t2.micro",
+            "KeyName": "ta-aws ec2",
+            "LaunchTime": "2018-10-20T18:47:11.000Z",
+            "Monitoring": {
+                "State": "disabled"
+            },
+            "Placement": {
+                "AvailabilityZone": "eu-west-3c",
+                "GroupName": "",
+                "Tenancy": "default"
+            },
+            "PrivateDnsName": "ip-172-31-47-77.eu-west-3.compute.internal",
+            "PrivateIpAddress": "172.31.47.77",
+            "ProductCodes": [],
+            "PublicDnsName": "",
+            "State": {
+                "Code": 0,
+                "Name": "pending"
+            },
+            "StateTransitionReason": "",
+            "SubnetId": "subnet-cb5b8186",
+            "VpcId": "vpc-df98cbb6",
+            "Architecture": "x86_64",
+            "BlockDeviceMappings": [],
+            "ClientToken": "",
+            "EbsOptimized": false,
+            "Hypervisor": "xen",
+            "NetworkInterfaces": [
+                {
+                    "Attachment": {
+                        "AttachTime": "2018-10-20T18:47:11.000Z",
+                        "AttachmentId": "eni-attach-0ca45b7a82c025563",
+                        "DeleteOnTermination": true,
+                        "DeviceIndex": 0,
+                        "Status": "attaching"
+                    },
+                    "Description": "",
+                    "Groups": [
+                        {
+                            "GroupName": "launch-wizard-1",
+                            "GroupId": "sg-0537c2e935e377698"
+                        }
+                    ],
+                    "Ipv6Addresses": [],
+                    "MacAddress": "0e:c5:93:3d:7e:e8",
+                    "NetworkInterfaceId": "eni-0da569f391777a799",
+                    "OwnerId": "426768208976",
+                    "PrivateDnsName": "ip-172-31-47-77.eu-west-3.compute.internal",
+                    "PrivateIpAddress": "172.31.47.77",
+                    "PrivateIpAddresses": [
+                        {
+                            "Primary": true,
+                            "PrivateDnsName": "ip-172-31-47-77.eu-west-3.compute.internal",
+                            "PrivateIpAddress": "172.31.47.77"
+                        }
+                    ],
+                    "SourceDestCheck": true,
+                    "Status": "in-use",
+                    "SubnetId": "subnet-cb5b8186",
+                    "VpcId": "vpc-df98cbb6"
+                }
+            ],
+            "RootDeviceName": "/dev/sda1",
+            "RootDeviceType": "ebs",
+            "SecurityGroups": [
+                {
+                    "GroupName": "launch-wizard-1",
+                    "GroupId": "sg-0537c2e935e377698"
+                }
+            ],
+            "SourceDestCheck": true,
+            "StateReason": {
+                "Code": "pending",
+                "Message": "pending"
+            },
+            "Tags": [
+                {
+                    "Key": "aws:ec2launchtemplate:version",
+                    "Value": "1"
+                },
+                {
+                    "Key": "aws:ec2launchtemplate:id",
+                    "Value": "lt-0d212073acc463129"
+                }
+            ],
+            "VirtualizationType": "hvm",
+            "CpuOptions": {
+                "CoreCount": 1,
+                "ThreadsPerCore": 1
+            }
+        }
+    ],
+    "OwnerId": "426768208976",
+    "ReservationId": "r-07f11c1f55e292008"
+}
+drodriguez@drX1:~$

@@ -1,0 +1,54 @@
+drodriguez@drX1:~$ aws autoscaling create-auto-scaling-group --auto-scaling-group-name ec2-listener-autoscaling --launch-template LaunchTemplateName=EC2-Listener --min-size 2 --max-size 4 --desired-capacity 2 --availability-zones eu-west-3c --generate-cli-skeleton
+{
+    "AutoScalingGroupName": "",
+    "LaunchConfigurationName": "",
+    "LaunchTemplate": {
+        "LaunchTemplateId": "",
+        "LaunchTemplateName": "",
+        "Version": ""
+    },
+    "InstanceId": "",
+    "MinSize": 0,
+    "MaxSize": 0,
+    "DesiredCapacity": 0,
+    "DefaultCooldown": 0,
+    "AvailabilityZones": [
+        ""
+    ],
+    "LoadBalancerNames": [
+        ""
+    ],
+    "TargetGroupARNs": [
+        ""
+    ],
+    "HealthCheckType": "",
+    "HealthCheckGracePeriod": 0,
+    "PlacementGroup": "",
+    "VPCZoneIdentifier": "",
+    "TerminationPolicies": [
+        ""
+    ],
+    "NewInstancesProtectedFromScaleIn": true,
+    "LifecycleHookSpecificationList": [
+        {
+            "LifecycleHookName": "",
+            "LifecycleTransition": "",
+            "NotificationMetadata": "",
+            "HeartbeatTimeout": 0,
+            "DefaultResult": "",
+            "NotificationTargetARN": "",
+            "RoleARN": ""
+        }
+    ],
+    "Tags": [
+        {
+            "ResourceId": "",
+            "ResourceType": "",
+            "Key": "",
+            "Value": "",
+            "PropagateAtLaunch": true
+        }
+    ],
+    "ServiceLinkedRoleARN": ""
+}
+drodriguez@drX1:~$
