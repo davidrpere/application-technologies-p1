@@ -192,9 +192,10 @@ class S3StoringInterface(Thread):
         if os.path.isfile(local_file_path):
             local_file = open(local_file_path, 'r')
         else:
-            local_file = open(local_file_path, 'w')
+            local_file = open(local_file_path, 'w+')
         if self._check_file_exists(query.query_param):
             self.download_file(query.query_param, os.path.abspath(local_file_path))
+            local_file = open(local_file_path, 'r')
             file_data_json = json.loads(local_file.read())
             if query.client_id in file_data_json:
                 old_json_content = file_data_json[query.client_id]
